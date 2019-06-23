@@ -84,14 +84,14 @@ if __name__ == '__main__':
 
 	print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
 
-	# dataiter = iter(testloader)
-	# images, labels = testloader[0]
+	dataiter = iter(testloader)
+	images, labels = dataiter.next()
 
-	# outputs = net(images)
-	# _, predicted = torch.max(outputs, 1)
+	outputs = net(images)
+	_, predicted = torch.max(outputs, 1)
 
-	# print('Predicted:', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
-	# imgshow(torchvision.utils.make_grid(images))
+	print('Predicted:', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
+	imgshow(torchvision.utils.make_grid(images))
 
 
 		
