@@ -25,11 +25,11 @@ dataroot = "./data"
 workers = 5
 
 # Batch size during training
-batch_size = 1
+batch_size = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
-image_size = 64
+image_size = 32
 
 # Number of channels in the training images. For color images this is 3
 nc = 3
@@ -44,7 +44,7 @@ ngf = 64
 ndf = 64
 
 # Number of training epochs
-num_epochs = 1
+num_epochs = 3
 
 # Learning rate for optimizers
 lr = 0.0002
@@ -53,11 +53,11 @@ lr = 0.0002
 beta1 = 0.5
 
 # Number of GPUs available. Use 0 for CPU mode.
-ngpu = 4
+ngpu = 0
 
 transform = transforms.Compose([
                                transforms.Resize(image_size),
-                               transforms.CenterCrop(image_size),
+                            #    transforms.CenterCrop(image_size),
                                transforms.ToTensor(),
                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                            ])
@@ -72,11 +72,11 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True, n
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
 
 # Plot some training images
-real_batch = next(iter(dataloader))
-plt.figure(figsize=(8,8))
-plt.axis("off")
-plt.title("Training Images")
-plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(),(1,2,0)))
+# real_batch = next(iter(dataloader))
+# plt.figure(figsize=(8,8))
+# plt.axis("off")
+# plt.title("Training Images")
+# plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(),(1,2,0)))
 
 # custom weights initialization called on netG and netD
 def weights_init(m):
@@ -107,11 +107,11 @@ class Generator(nn.Module):
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
             # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d( ngf, nc, 4, 2, 1, bias=False),
+            # nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
+            # nn.BatchNorm2d(ngf),
+            # nn.ReLU(True),
+            # # state size. (ngf) x 32 x 32
+            nn.ConvTranspose2d( ngf*2, nc, 4, 2, 1, bias=False),
             nn.Tanh()
             # state size. (nc) x 64 x 64
         )
@@ -140,7 +140,7 @@ class Discriminator(nn.Module):
             nn.BatchNorm2d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.Conv2d(ndf * 8, 1, 2, 1, 0, bias=False),
             nn.Sigmoid()
         )
 
