@@ -3,29 +3,25 @@ import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as transforms
-
-
 import torch.nn as nn
 import torch.nn.functional as F
-
-
 import torch.optim as optim
 
 transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # descargar el dataset
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2) # carga el dataset
+trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # descargar el dataset de entrenamiento
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2) # carga el dataset de entrenamiento
 
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform) # no tengo idea porq se repite, mas datos ?
-testloader = torch.utils.data.DataLoader(testset, batch_size=4, shuffle=False, num_workers=2)
+testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform) # descargar el dataset de prueba
+testloader = torch.utils.data.DataLoader(testset, batch_size=4, shuffle=False, num_workers=2) # carga el dataset de prueba
 
 classes = ('plane', 'car', 'bird', 'cat','deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 
 def imgshow(img):
-	img = img / 2 + 0.5     # unnormalize
+	img = img / 2 + 0.5 # unnormalize
 	npimg = img.numpy()
-	plt.imgshow(np.transpose(npimg, (1, 2, 0)))
+	plt.imshow(np.transpose(npimg, (1, 2, 0)))
 	plt.show()
 
 class Net(nn.Module):
@@ -46,16 +42,13 @@ class Net(nn.Module):
 		x = F.relu(self.fc2(x))
 		x = self.fc3(x)
 		return x
-
-
-def main():
-	
+		
+if __name__ == '__main__':
 	net = Net()
 	criterion = nn.CrossEntropyLoss()
 	optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
 	for epoch in range(5):  # loop over the dataset multiple times
-
 		running_loss = 0.0
 		for i, data in enumerate(trainloader, 0):
 			# get the inputs; data is a list of [inputs, labels]
@@ -79,26 +72,26 @@ def main():
 
 	print('Finished Training')
 
+	correct = 0
+	total = 0
+	with torch.no_grad():
+		for data in testloader:
+			images, labels = data
+			outputs = net(images)
+			_, predicted = torch.max(outputs.data, 1)
+			total += labels.size(0)
+			correct += (predicted == labels).sum().item()
 
-	for i, data in enumerate(trainloader,0): # esto para que funcione en win, si  no usas win borra esta linea.
+	print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
+
+	# dataiter = iter(testloader)
+	# images, labels = testloader[0]
+
+	# outputs = net(images)
+	# _, predicted = torch.max(outputs, 1)
+
+	# print('Predicted:', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
+	# imgshow(torchvision.utils.make_grid(images))
+
+
 		
-		correct = 0
-		total = 0
-		with torch.no_grad():
-			for data in testloader:
-				images, labels = data
-				outputs = net(images)
-				_, predicted = torch.max(outputs.data, 1)
-				total += labels.size(0)
-				correct += (predicted == labels).sum().item()
-
-		print('Accuracy of the network on the 10000 test images: %d %%' % (
-			100 * correct / total))
-		return
-		
-	#return
-
-if __name__ == '__main__':
-	main()
-
-	
