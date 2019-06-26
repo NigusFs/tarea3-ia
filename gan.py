@@ -362,7 +362,7 @@ images = img_list[-1]
 outputs = cnn(images)
 _, predicted = torch.max(outputs, 1)
 
-imgshow(fakeList[-1])
+plt.imshow(np.transpose(fakeList[-1],(1,2,0)))
 
 print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(4)))
 imgshow(torchvision.utils.make_grid(images))
