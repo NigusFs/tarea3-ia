@@ -6,6 +6,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.parallel
+import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
@@ -25,7 +26,7 @@ dataroot = "./data"
 workers = 5
 
 # Batch size during training
-batch_size = 64
+batch_size = 10
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
@@ -35,7 +36,7 @@ image_size = 32
 nc = 3
 
 # Size of z latent vector (i.e. size of generator input)
-nz = 100
+nz = 10
 
 # Size of feature maps in generator
 ngf = 64
@@ -44,7 +45,7 @@ ngf = 64
 ndf = 64
 
 # Number of training epochs
-num_epochs = 3
+num_epochs = 1
 
 # Learning rate for optimizers
 lr = 0.0002
@@ -54,6 +55,12 @@ beta1 = 0.5
 
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 0
+
+def imgshow(img):
+	img = img / 2 + 0.5 # unnormalize
+	npimg = img.numpy()
+	plt.imshow(np.transpose(npimg, (1, 2, 0)))
+	plt.show()
 
 transform = transforms.Compose([
                                transforms.Resize(image_size),
@@ -119,6 +126,29 @@ class Generator(nn.Module):
     def forward(self, input):
         return self.main(input)
 
+class Net(nn.Module):
+    def __init__(self, ngpu):
+        super(Net, self).__init__()
+        self.ngpu = ngpu
+        # self.main = nn.Sequential(
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+        # )
+		
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+	
 class Discriminator(nn.Module):
     def __init__(self, ngpu):
         super(Discriminator, self).__init__()
@@ -150,6 +180,34 @@ class Discriminator(nn.Module):
 # Create the generator
 netG = Generator(ngpu).to(device)
 
+cnn = Net(ngpu)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(cnn.parameters(), lr=0.001, momentum=0.9)
+
+print("Starting CNN Training Loop")
+for epoch in range(5):  # loop over the dataset multiple times
+		running_loss = 0.0
+		for i, data in enumerate(dataloader, 0):
+			# get the inputs; data is a list of [inputs, labels]
+			inputs, labels = data
+
+			# zero the parameter gradients
+			optimizer.zero_grad()
+
+			# forward + backward + optimize
+			outputs = cnn(inputs)
+			loss = criterion(outputs, labels)
+			loss.backward()
+			optimizer.step()
+
+			# print statistics
+			running_loss += loss.item()
+			if i % 2000 == 1999:    # print every 2000 mini-batches
+				print('[%d, %5d] loss: %.3f' %
+					  (epoch + 1, i + 1, running_loss / 2000))
+				running_loss = 0.0
+print('Finished CNN Training')
+
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
     netG = nn.DataParallel(netG, list(range(ngpu)))
@@ -162,7 +220,7 @@ netG.apply(weights_init)
 print(netG)
 
 # Create the Discriminator
-netD = Discriminator(ngpu).to(device)
+netD = Net(ngpu).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -176,7 +234,7 @@ netD.apply(weights_init)
 print(netD)
 
 # Initialize BCELoss function
-criterion = nn.BCELoss()
+criterion = nn.CrossEntropyLoss()
 
 # Create batch of latent vectors that we will use to visualize
 #  the progression of the generator
@@ -187,18 +245,19 @@ real_label = 1
 fake_label = 0
 
 # Setup Adam optimizers for both G and D
-optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
+optimizerD = optim.SGD(netD.parameters(), lr=0.001, momentum=0.9)
 optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
 
 # Training Loop
 
 # Lists to keep track of progress
 img_list = []
+fakeList = []
 G_losses = []
 D_losses = []
 iters = 0
 
-print("Starting Training Loop...")
+print("Starting GAN Training Loop...")
 # For each epoch
 for epoch in range(num_epochs):
     # For each batch in the dataloader
@@ -209,28 +268,32 @@ for epoch in range(num_epochs):
         ###########################
         ## Train with all-real batch
         netD.zero_grad()
-        # Format batch
-        real_cpu = data[0].to(device)
-        b_size = real_cpu.size(0)
-        label = torch.full((b_size,), real_label, device=device)
-        # Forward pass real batch through D
-        output = netD(real_cpu).view(-1)
-        # Calculate loss on all-real batch
-        errD_real = criterion(output, label)
-        # Calculate gradients for D in backward pass
+        inputs, labels = data
+
+        # zero the parameter gradients
+        optimizerD.zero_grad()
+
+        # forward + backward + optimize
+        outputs = netD(inputs)
+        errD_real = criterion(outputs, labels)
         errD_real.backward()
-        D_x = output.mean().item()
+        optimizerD.step()
+        D_x = outputs.mean().item() #sacar?
 
         ## Train with all-fake batch
         # Generate batch of latent vectors
+        real_cpu = data[0].to(device)
+        b_size = real_cpu.size(0)
         noise = torch.randn(b_size, nz, 1, 1, device=device)
         # Generate fake image batch with G
         fake = netG(noise)
-        label.fill_(fake_label)
+        labels.fill_(fake_label)
+        labels = labels.to(device=device, dtype=torch.int64)
+
         # Classify all fake batch with D
-        output = netD(fake.detach()).view(-1)
+        output = netD(fake.detach())
         # Calculate D's loss on the all-fake batch
-        errD_fake = criterion(output, label)
+        errD_fake = criterion(output, labels)
         # Calculate the gradients for this batch
         errD_fake.backward()
         D_G_z1 = output.mean().item()
@@ -243,11 +306,11 @@ for epoch in range(num_epochs):
         # (2) Update G network: maximize log(D(G(z)))
         ###########################
         netG.zero_grad()
-        label.fill_(real_label)  # fake labels are real for generator cost
+        labels.fill_(real_label)  # fake labels are real for generator cost
         # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = netD(fake).view(-1)
+        output = netD(fake)
         # Calculate G's loss based on this output
-        errG = criterion(output, label)
+        errG = criterion(output, labels)
         # Calculate gradients for G
         errG.backward()
         D_G_z2 = output.mean().item()
@@ -268,17 +331,13 @@ for epoch in range(num_epochs):
         if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
             with torch.no_grad():
                 fake = netG(fixed_noise).detach().cpu()
+                for pic in fake:
+                    fakeList.append(pic)
             img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
         iters += 1
         
-#%%capture
-fig = plt.figure(figsize=(8,8))
-plt.axis("off")
-ims = [[plt.imshow(np.transpose(i,(1,2,0)), animated=True)] for i in img_list]
-ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
-
-HTML(ani.to_jshtml())
+# HTML(ani.to_jshtml())
 # Grab a batch of real images from the dataloader
 real_batch = next(iter(dataloader))
 
@@ -295,3 +354,15 @@ plt.axis("off")
 plt.title("Fake Images")
 plt.imshow(np.transpose(img_list[-1],(1,2,0)))
 plt.show()
+
+classes = ('plane', 'car', 'bird', 'cat','deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+images = img_list[-1]
+
+outputs = cnn(images)
+_, predicted = torch.max(outputs, 1)
+
+imgshow(fakeList[-1])
+
+print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(4)))
+imgshow(torchvision.utils.make_grid(images))
