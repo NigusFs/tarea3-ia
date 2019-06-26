@@ -50,7 +50,7 @@ if __name__ == '__main__':
 	criterion = nn.CrossEntropyLoss()
 	optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-	for epoch in range(1):  # loop over the dataset multiple times
+	for epoch in range(5):  # loop over the dataset multiple times
 		running_loss = 0.0
 		for i, data in enumerate(trainloader, 0):
 			# get the inputs; data is a list of [inputs, labels]
@@ -86,14 +86,14 @@ if __name__ == '__main__':
 
 	print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
 
-	model=torch.load('imagenes_test3.pt')
+# 	model=torch.load('imagenes_test3.pt')
 	
 
-	outputs = net(model[-1])
-	_, predicted = torch.max(outputs, 1)
+# 	outputs = net(model[-1])
+# 	_, predicted = torch.max(outputs, 1)
 
-	print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(64)))
-	imgshow(torchvision.utils.make_grid(model[-1]))
+# 	print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(64)))
+# 	imgshow(torchvision.utils.make_grid(model[-1]))
 
 
 		
