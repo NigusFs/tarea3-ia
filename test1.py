@@ -3,29 +3,27 @@ import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as transforms
-
-
 import torch.nn as nn
 import torch.nn.functional as F
-
-
 import torch.optim as optim
 
 transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # descargar el dataset
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2) # carga el dataset
+trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) # descargar el dataset de entrenamiento
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2) # carga el dataset de entrenamiento
 
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform) # no tengo idea porq se repite, mas datos ?
-testloader = torch.utils.data.DataLoader(testset, batch_size=4, shuffle=False, num_workers=2)
+testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform) # descargar el dataset de prueba
+
+testloader = torch.utils.data.DataLoader(testset, batch_size=4, shuffle=False, num_workers=2) # carga el dataset de prueba
+
 
 classes = ('plane', 'car', 'bird', 'cat','deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 
 def imgshow(img):
-	img = img / 2 + 0.5     # unnormalize
+	img = img / 2 + 0.5 # unnormalize
 	npimg = img.numpy()
-	plt.imgshow(np.transpose(npimg, (1, 2, 0)))
+	plt.imshow(np.transpose(npimg, (1, 2, 0)))
 	plt.show()
 
 class Net(nn.Module):
@@ -46,20 +44,18 @@ class Net(nn.Module):
 		x = F.relu(self.fc2(x))
 		x = self.fc3(x)
 		return x
-
-
-def main():
-	
+		
+if __name__ == '__main__':
 	net = Net()
 	criterion = nn.CrossEntropyLoss()
 	optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-	for epoch in range(1):  # loop over the dataset multiple times
-
+	for epoch in range(2):  # loop over the dataset multiple times
 		running_loss = 0.0
 		for i, data in enumerate(trainloader, 0):
 			# get the inputs; data is a list of [inputs, labels]
 			inputs, labels = data
+
 
 			# zero the parameter gradients
 			optimizer.zero_grad()
@@ -79,11 +75,6 @@ def main():
 
 	print('Finished Training')
 
-
-	dataiter = iter(testloader)
-	images, labels = dataiter.next()
- 	# esto para que funcione en win, si  no usas win borra esta linea.
-		
 	correct = 0
 	total = 0
 	with torch.no_grad():
@@ -94,11 +85,45 @@ def main():
 			total += labels.size(0)
 			correct += (predicted == labels).sum().item()
 
-	print('Accuracy of the network on the 10000 test images: %d %%' % (
-		100 * correct / total))
-	return
-		
-	#return
+	print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
 
-if __name__ == '__main__':
-	main()
+
+	########
+	model=torch.load('imagenes_test3.pt')
+	
+	
+	
+	fakeLabels = []
+	outputs = net(model[-1]) # transpose(1, 3, 32, 32) funciona en el net
+	_, predicted = torch.max(outputs, 1)
+	print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(64)))
+	for j in range(64):
+		fakeLabels.append(predicted[j])
+	
+	
+	# newimg, newlabel = np.random.rand(1, 32, 32, 3), 1 #<- dimension de cifar10
+	
+	
+	#intente tomar una imagen de model[-1], 
+	#converti el tensor de esa imagen en un numpy array, 
+	#luego le di las dimensiones para que se pareciera a los datos de cifar10, movi las filas para que calzara con los inputs con transpose
+	# lo agrege al trainloader junto con las etiquetas q se predijieron.
+
+	#en teoria funciona, lo malo esq no se si esta bien el orden de las filas de los tensores.
+	for j in range(0,len(model[-1])): #se demora un monton en ejecutar este for
+		model1= torch.tensor((np.transpose(np.array(model[-1][j]).reshape(1, 3, 32, 32), (0,2 ,3 ,1)))) 
+		trainset.data = np.r_[trainloader.dataset.data, model1] # se debe agregar las 64 imagenes <- iterear eso 64 veces.
+	
+	trainset.targets.append(fakeLabels)
+	imgshow(torchvision.utils.make_grid(model[-1]))
+
+	# fakeLabels = []
+	# for elem in fakeList:
+	#     output = cnn(fakeList[0])
+	#     _, predicted = torch.max(outputs, 1)
+	#     fakeLabels.append(predicted)
+	# 
+	
+
+
+		
