@@ -86,14 +86,3 @@ if __name__ == '__main__':
 
 	print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
 
-# 	model=torch.load('imagenes_test3.pt')
-	
-
-# 	outputs = net(model[-1])
-# 	_, predicted = torch.max(outputs, 1)
-
-# 	print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(64)))
-# 	imgshow(torchvision.utils.make_grid(model[-1]))
-
-
-		
