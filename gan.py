@@ -26,7 +26,7 @@ dataroot = "./data"
 workers = 5
 
 # Batch size during training
-batch_size = 10
+batch_size = 64
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
@@ -36,7 +36,7 @@ image_size = 32
 nc = 3
 
 # Size of z latent vector (i.e. size of generator input)
-nz = 10
+nz = 100
 
 # Size of feature maps in generator
 ngf = 64
@@ -45,7 +45,7 @@ ngf = 64
 ndf = 64
 
 # Number of training epochs
-num_epochs = 1
+num_epochs = 30
 
 # Learning rate for optimizers
 lr = 0.0002
@@ -54,13 +54,7 @@ lr = 0.0002
 beta1 = 0.5
 
 # Number of GPUs available. Use 0 for CPU mode.
-ngpu = 0
-
-def imgshow(img):
-    img = img / 2 + 0.5 # unnormalize
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
+ngpu = 1
 
 transform = transforms.Compose([
                                transforms.Resize(image_size),
@@ -74,12 +68,6 @@ transform = transforms.Compose([
 dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform) 
 # Create the dataloader
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True, num_workers=10)
-
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform) # descargar el dataset de entrenamiento
-testloader = torch.utils.data.DataLoader(testset, batch_size=10, shuffle=True, num_workers=2) # carga el dataset de entrenamiento
-
-
-
 
 # Decide which device we want to run on
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
@@ -132,29 +120,6 @@ class Generator(nn.Module):
     def forward(self, input):
         return self.main(input)
 
-class Net(nn.Module):
-    def __init__(self, ngpu):
-        super(Net, self).__init__()
-        self.ngpu = ngpu
-        # self.main = nn.Sequential(
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-        # )
-        
-
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-    
 class Discriminator(nn.Module):
     def __init__(self, ngpu):
         super(Discriminator, self).__init__()
@@ -186,34 +151,6 @@ class Discriminator(nn.Module):
 # Create the generator
 netG = Generator(ngpu).to(device)
 
-cnn = Net(ngpu)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(cnn.parameters(), lr=0.001, momentum=0.9)
-
-print("Starting CNN Training Loop")
-for epoch in range(5):  # loop over the dataset multiple times
-        running_loss = 0.0
-        for i, data in enumerate(dataloader, 0):
-            # get the inputs; data is a list of [inputs, labels]
-            inputs, labels = data
-
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # forward + backward + optimize
-            outputs = cnn(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            # print statistics
-            running_loss += loss.item()
-            if i % 2000 == 1999:    # print every 2000 mini-batches
-                print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 2000))
-                running_loss = 0.0
-print('Finished CNN Training')
-
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
     netG = nn.DataParallel(netG, list(range(ngpu)))
@@ -226,7 +163,7 @@ netG.apply(weights_init)
 print(netG)
 
 # Create the Discriminator
-netD = Net(ngpu).to(device)
+netD = Discriminator(ngpu).to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -240,7 +177,7 @@ netD.apply(weights_init)
 print(netD)
 
 # Initialize BCELoss function
-criterion = nn.CrossEntropyLoss()
+criterion = nn.BCELoss()
 
 # Create batch of latent vectors that we will use to visualize
 #  the progression of the generator
@@ -251,19 +188,19 @@ real_label = 1
 fake_label = 0
 
 # Setup Adam optimizers for both G and D
-optimizerD = optim.SGD(netD.parameters(), lr=0.001, momentum=0.9)
+optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
 
 # Training Loop
 
 # Lists to keep track of progress
 img_list = []
-fakeList = []
 G_losses = []
 D_losses = []
 iters = 0
+fakes = []
 
-print("Starting GAN Training Loop...")
+print("Starting Training Loop...")
 # For each epoch
 for epoch in range(num_epochs):
     # For each batch in the dataloader
@@ -274,32 +211,28 @@ for epoch in range(num_epochs):
         ###########################
         ## Train with all-real batch
         netD.zero_grad()
-        inputs, labels = data
-
-        # zero the parameter gradients
-        optimizerD.zero_grad()
-
-        # forward + backward + optimize
-        outputs = netD(inputs)
-        errD_real = criterion(outputs, labels)
+        # Format batch
+        real_cpu = data[0].to(device)
+        b_size = real_cpu.size(0)
+        label = torch.full((b_size,), real_label, device=device)
+        # Forward pass real batch through D
+        output = netD(real_cpu).view(-1)
+        # Calculate loss on all-real batch
+        errD_real = criterion(output, label)
+        # Calculate gradients for D in backward pass
         errD_real.backward()
-        optimizerD.step()
-        D_x = outputs.mean().item() #sacar?
+        D_x = output.mean().item()
 
         ## Train with all-fake batch
         # Generate batch of latent vectors
-        real_cpu = data[0].to(device)
-        b_size = real_cpu.size(0)
         noise = torch.randn(b_size, nz, 1, 1, device=device)
         # Generate fake image batch with G
         fake = netG(noise)
-        labels.fill_(fake_label)
-        labels = labels.to(device=device, dtype=torch.int64)
-
+        label.fill_(fake_label)
         # Classify all fake batch with D
-        output = netD(fake.detach())
+        output = netD(fake.detach()).view(-1)
         # Calculate D's loss on the all-fake batch
-        errD_fake = criterion(output, labels)
+        errD_fake = criterion(output, label)
         # Calculate the gradients for this batch
         errD_fake.backward()
         D_G_z1 = output.mean().item()
@@ -312,11 +245,11 @@ for epoch in range(num_epochs):
         # (2) Update G network: maximize log(D(G(z)))
         ###########################
         netG.zero_grad()
-        labels.fill_(real_label)  # fake labels are real for generator cost
+        label.fill_(real_label)  # fake labels are real for generator cost
         # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = netD(fake)
+        output = netD(fake).view(-1)
         # Calculate G's loss based on this output
-        errG = criterion(output, labels)
+        errG = criterion(output, label)
         # Calculate gradients for G
         errG.backward()
         D_G_z2 = output.mean().item()
@@ -337,14 +270,19 @@ for epoch in range(num_epochs):
         if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
             with torch.no_grad():
                 fake = netG(fixed_noise).detach().cpu()
-                fakeList.append(fake) # se debe llamar a fakeList[-1] para obtener la ultimas imagenes generadas
-                # for pic in fake:  #duda, aca se agregan las fotos por separados ? <- asumire que si by: NFS
-                #     fakeList.append(pic)
+            fakes.append(fake)
             img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
         iters += 1
         
-# HTML(ani.to_jshtml())
+#%%capture
+torch.save(fakes,'imagenes_test6.pt')
+fig = plt.figure(figsize=(8,8))
+plt.axis("off")
+ims = [[plt.imshow(np.transpose(i,(1,2,0)), animated=True)] for i in img_list]
+ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
+
+HTML(ani.to_jshtml())
 # Grab a batch of real images from the dataloader
 real_batch = next(iter(dataloader))
 
@@ -361,91 +299,3 @@ plt.axis("off")
 plt.title("Fake Images")
 plt.imshow(np.transpose(img_list[-1],(1,2,0)))
 plt.show()
-
-classes = ('plane', 'car', 'bird', 'cat','deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-#assign labels to the fake image generate
-fakeLabels = []
-fakeList = fakeList[-1] #this is the last set of picture generate (the best)
-outputs = cnn(fakeList) 
-_, predicted = torch.max(outputs, 1)
-
-for i in range(0,len(fakeList)-1):
-    fakeLabels.append(predicted[i])
-
-#add the pictures generated by the gan to the trainset  
-for j in range(0,len(fakeList)-1): #check the range of iteration! 
-        new_data= torch.tensor((np.transpose(np.array(fakeList[j]).reshape(1, 3, 32, 32), (0,2 ,3 ,1)))) 
-        dataset.data = np.r_[dataloader.dataset.data, new_data] 
-
-dataset.targets.append(fakeLabels)
-
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True, num_workers=10) #convert the new dataset in a tensor (?)
-
-#where are the trainset ? -> it is the dataloader
-#I put a testset to set the cnn_2
-
-# Now must to be the code to train the cnn with the new dataset. --v
-
-# uncomment this if it is ok.
-
-# cnn_2 = Net()
-# criterion = nn.CrossEntropyLoss()
-# optimizer = optim.SGD(cnn_2.parameters(), lr=0.001, momentum=0.9)
-
-# for epoch in range(7):  # loop over the dataset multiple times
-#   running_loss = 0.0
-#   for i, data in enumerate(dataloader, 0):
-#       # get the inputs; data is a list of [inputs, labels]
-#       inputs, labels = data
-
-
-#       # zero the parameter gradients
-#       optimizer.zero_grad()
-
-#       # forward + backward + optimize
-#       outputs = cnn2(inputs)
-#       loss = criterion(outputs, labels)
-#       loss.backward()
-#       optimizer.step()
-
-#       # print statistics
-#       running_loss += loss.item()
-#       if i % 2000 == 1999:    # print every 2000 mini-batches
-#           print('[%d, %5d] loss: %.3f' %
-#                 (epoch + 1, i + 1, running_loss / 2000))
-#           running_loss = 0.0
-
-# print('Finished Training')
-
-# correct = 0
-# total = 0
-# with torch.no_grad():
-#   for data in testloader: #we are testing the predictions with the original data. is  it okay ? or we have to add the new data to the testset too ? if it that the case we must to do again the before step
-#       images, labels = data
-#       outputs = cnn_2(images)
-#       _, predicted = torch.max(outputs.data, 1)
-#       total += labels.size(0)
-#       correct += (predicted == labels).sum().item()
-
-# print('Accuracy of the network with the new dataset : %d %%' % (100 * correct / total))
-
-
-######
-
-#muchas dudas aca, lo cambiare segun mi pinta.
-
-#images = img_list[-1]
-# fakeLabels = []
-# for elem in fakeList:
-#     output = cnn(fakeList[0])
-#     _, predicted = torch.max(outputs, 1)
-#     fakeLabels.append(predicted)
-
-# outputs = cnn(images)
-# _, predicted = torch.max(outputs, 1)
-
-# plt.imshow(np.transpose(fakeList[-1],(1,2,0)))
-
-# print('Predicted:', ' '.join('%5s' % classes[predicted[j]] for j in range(4)))
-# imgshow(torchvision.utils.make_grid(images))
