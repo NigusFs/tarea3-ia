@@ -122,7 +122,7 @@ if __name__ == '__main__':
 	#     output = cnn(fakeList[0])
 	#     _, predicted = torch.max(outputs, 1)
 	#     fakeLabels.append(predicted)
-	# 
+	
 	
 
 
