@@ -110,7 +110,7 @@ if __name__ == '__main__':
 	# lo agrege al trainloader junto con las etiquetas q se predijieron.
 
 	#en teoria funciona, lo malo esq no se si esta bien el orden de las filas de los tensores.
-	for j in range(0,len(model[-1])): #se demora un monton en ejecutar este for
+	for j in range(0,len(model[-1])-1): #se demora un monton en ejecutar este for
 		model1= torch.tensor((np.transpose(np.array(model[-1][j]).reshape(1, 3, 32, 32), (0,2 ,3 ,1)))) 
 		trainset.data = np.r_[trainloader.dataset.data, model1] # se debe agregar las 64 imagenes <- iterear eso 64 veces.
 	
